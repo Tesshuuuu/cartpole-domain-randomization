@@ -13,3 +13,17 @@ This project implements a trained controller for balancing an inverted pendulum 
 - Visualization of system states and control actions
 
 ## Requirements
+python
+numpy
+matplotlib
+jax
+
+## Usage
+Run the main script:
+bash
+python simulate_trained_controller.py
+
+Choose whether to train a new controller or load an existing one when prompted.
+
+## License
+[Tesshu Fujinami, Bruce Lee]
