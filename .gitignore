@@ -19,6 +19,8 @@ var/
 *.egg-info/
 .installed.cfg
 *.egg
+*.png
+.DS_Store
 
 # Virtual Environment
 venv/
