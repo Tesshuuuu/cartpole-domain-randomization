@@ -168,6 +168,7 @@ class PendulumTrainer:
         save_data = {
             'params': params,
             'phi': self.phi,
+            'true_phi': self.true_phi,
             'FI': self.FI,
             'noise_std': self.noise_std,
             'architecture': self.controller.features,
@@ -190,6 +191,7 @@ class PendulumTrainer:
         
         trainer = cls(
             phi=save_data['phi'],
+            true_phi=save_data['true_phi'],
             FI=save_data.get('FI', None),
             hidden_layers=save_data['architecture'][:-1],
             noise_std=save_data['noise_std']
@@ -251,7 +253,7 @@ def run_experiment(
         reg_strength=1e-3, 
         initial_learning_rate=0.00001, 
         batch_size=32 ,
-        cost_matrices=(jnp.array([[128.0, 0.0], [0.0, 0.1]]), jnp.array([[0.01]]))
+        cost_matrices=(jnp.array([[8.0, 0.0], [0.0, 0.1]]), jnp.array([[0.01]]))
     ):
     """
     Run the experiment to train the controller and simulate the pendulum system.
@@ -269,6 +271,8 @@ def run_experiment(
     )
     plot_losses(losses)
 
+    trainer.save_controller(trained_params, suffix='trained')
+
     # Simulate the controller
     print("=== Simulating controller ===")
     # simulate_controller(lambda params, obs: trainer.controller.apply({'params': params}, obs), trained_params)
@@ -283,5 +287,27 @@ def run_experiment(
     simulate_controller_old(lambda params, obs: trainer.controller.apply({'params': params}, obs), trained_params, duration=60, dt=0.05)
     pass
 
+def simulate_controller_from_file(duration=60, dt=0.05):
+    # ask a user for the filepath by listing and numbering all the files in the saved_controllers directory
+    # note that only list the files that end with .pkl and list them in the order of creation
+    saved_controllers_dir = 'saved_controllers'
+    files = [f for f in os.listdir(saved_controllers_dir) if f.endswith('.pkl')]
+    files.sort(key=lambda x: os.path.getctime(os.path.join(saved_controllers_dir, x)))
+    print("Available controllers:")
+    for i, file in enumerate(files):
+        print(f"{i}: {file}")
+    filepath = input("Enter the number of the controller to simulate: ")
+    filepath = os.path.join(saved_controllers_dir, files[int(filepath)])
+
+    trainer, params = PendulumTrainer.load_controller(filepath)
+    simulate_controller_old(lambda params, obs: trainer.controller.apply({'params': params}, obs), params, duration=duration, dt=dt)
+
 if __name__ == "__main__":
-    run_experiment()
+    # ask a user if they want to run the experiment or simulate a controller
+    user_input = input("Do you want to train or simulate a controller? (t/s): ")
+    if user_input == 't':
+        run_experiment()
+    elif user_input == 's':
+        simulate_controller_from_file()
+    else:
+        print("Invalid input. Please enter 't' to train or 's' to simulate a controller.")
