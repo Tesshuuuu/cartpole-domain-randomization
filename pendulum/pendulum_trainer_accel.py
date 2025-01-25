@@ -109,7 +109,7 @@ class PendulumTrainer:
               seed: int = 0) -> Tuple[Dict, jnp.ndarray]:
         
         # schedule_fn = optax.constant_schedule(initial_learning_rate)
-        schedule_fn = optax.exponential_decay(init_value=initial_learning_rate, transition_steps=num_iterations, decay_rate=0.9)
+        schedule_fn = optax.exponential_decay(init_value=initial_learning_rate, transition_steps=num_iterations, decay_rate=0.5)
         optimizer = optax.adam(learning_rate=schedule_fn)
         opt_state = optimizer.init(self.nn_params)
 
@@ -131,7 +131,7 @@ class PendulumTrainer:
        
             key, subkey1, subkey2 = random.split(key, 3)
             initial_states = jnp.stack([
-                random.uniform(subkey1, shape=(batch_size, ), minval=-jnp.pi/2, maxval=jnp.pi/2),
+                random.uniform(subkey1, shape=(batch_size, ), minval=-jnp.pi, maxval=jnp.pi),
                 random.uniform(subkey2, shape=(batch_size, ), minval=-1, maxval=1)
             ], axis=1)
 
@@ -244,11 +244,11 @@ def plot_losses(losses):
 def run_experiment(
         phi = jnp.array([1.0, 1.0, 9.81]), 
         true_phi = jnp.array([1.0, 1.0, 9.81]),
-        num_iterations=1000, 
+        num_iterations=6000, 
         episode_length=100, 
         hidden_layers = [64, 64, 64, 32], 
         noise_std=0.0,
-        reg_strength=1e-4, 
+        reg_strength=1e-3, 
         initial_learning_rate=0.00001, 
         batch_size=32 ,
         cost_matrices=(jnp.array([[128.0, 0.0], [0.0, 0.1]]), jnp.array([[0.01]]))
