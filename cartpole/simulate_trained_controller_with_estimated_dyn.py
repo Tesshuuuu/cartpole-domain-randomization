@@ -3,8 +3,8 @@ import jax.numpy as jnp
 import jax
 from cartpole_trainer import CartPoleTrainer, create_default_cost_matrices
 from simulate_trained_controller import simulate_trained_controller, compare_controllers
-from estimate_dyn import main as estimate_dyn_main
-from noiseless_dyn import noiseless_dyn
+from estimate_dyn import main as estimate_main
+from noiseless_dyn_cartpole import noiseless_dyn_cartpole as noiseless_dyn
 import matplotlib.pyplot as plt
 import os
 import matplotlib.animation as animation
@@ -61,11 +61,12 @@ def train_with_estimated_dynamics():
         trainer_robust, trained_params_robust = CartPoleTrainer.load_controller(filepath_robust)
         
         # Store the estimated parameters from the loaded controllers
-        estimated_params = trainer_nominal.dynamics_params  # or trainer_robust.dynamics_params
+        estimated_phi = trainer_nominal.phi
+        estimated_FI = trainer_nominal.FI
         
         print(f"Loaded nominal controller from: {filepath_nominal}")
         print(f"Loaded robust controller from: {filepath_robust}")
-        print(f"Using estimated parameters from saved controller: {estimated_params}")
+        print(f"Using estimated parameters from saved controller: {estimated_phi}")
         
     else:
         load_nominal = input("Do you want to load a nominal controller? (y/n): ").lower().strip() == 'y'
@@ -102,10 +103,11 @@ def train_with_estimated_dynamics():
             trainer_nominal, trained_params_nominal = CartPoleTrainer.load_controller(filepath_nominal)
             
             # Store the estimated parameters from the loaded controllers
-            estimated_params = trainer_nominal.dynamics_params  # or trainer_robust.dynamics_params
+            estimated_phi = trainer_nominal.phi
+            estimated_FI = trainer_nominal.FI
             
             print(f"Loaded nominal controller from: {filepath_nominal}")
-            print(f"Using estimated parameters from saved controller: {estimated_params}") 
+            print(f"Using estimated parameters from saved controller: {estimated_phi}") 
 
             continue_training = input("Do you want to continue training the robust controller? (y/n): ").lower().strip() == 'y'
             if continue_training:
@@ -156,7 +158,7 @@ def train_with_estimated_dynamics():
                 plt.xlabel('Iteration')
                 plt.ylabel('Loss')
                 plt.title('Additional Robust Controller Training Progress')
-                plt.ylim(0, 1000)
+                plt.ylim(0, 100)
                 plt.grid(True)
                 plt.tight_layout()
                 plt.savefig('robust_additional_training_loss.png')
@@ -183,7 +185,8 @@ def train_with_estimated_dynamics():
                     reg_strength = 0.01
 
                 trainer_robust = CartPoleTrainer(
-                    estimated_params,
+                    estimated_phi,
+                    estimated_FI,
                     hidden_layers=[64, 64, 32],
                     noise_std=0.01
                 )
@@ -203,7 +206,7 @@ def train_with_estimated_dynamics():
                 plt.xlabel('Iteration')
                 plt.ylabel('Loss')
                 plt.title('Robust Controller Training Progress')
-                plt.ylim(0, 1000)
+                plt.ylim(0, 200)
                 plt.grid(True)
                 plt.tight_layout()
                 plt.savefig('training_losses_robust.png')
@@ -215,8 +218,8 @@ def train_with_estimated_dynamics():
         else:
             # 1. Estimate dynamics parameters
             print("\nStep 1: Estimating dynamics parameters...")
-            estimated_params, true_params = estimate_dyn_main()
-            
+            estimated_phi, true_phi, estimated_FI = estimate_main()
+
             # 2. Train controllers using estimated parameters
             print("\nStep 2: Training controllers with estimated parameters...")
             
@@ -235,7 +238,8 @@ def train_with_estimated_dynamics():
             # Train nominal controller
             print("Training nominal controller...")
             trainer_nominal = CartPoleTrainer(
-                estimated_params,
+                estimated_phi,
+                estimated_FI,
                 hidden_layers=[64, 64, 32],
                 noise_std=0.01
             )
@@ -248,10 +252,14 @@ def train_with_estimated_dynamics():
                 initial_learning_rate=learning_rate
             )
             
+            save_path_nominal = trainer_nominal.save_controller(trained_params_nominal, suffix='nominal')
+            print(f"\nNominal controller saved to: {save_path_nominal}")
+
             # Train robust controller
             print("\nTraining robust controller...")
             trainer_robust = CartPoleTrainer(
-                estimated_params,
+                estimated_phi,
+                estimated_FI,
                 hidden_layers=[64, 64, 32],
                 noise_std=0.01
             )
@@ -265,6 +273,11 @@ def train_with_estimated_dynamics():
                 reg_strength=reg_strength
             )
         
+                       
+            # Save the controllers
+            save_path_robust = trainer_robust.save_controller(trained_params_robust, suffix='robust')
+            print(f"Robust controller saved to: {save_path_robust}")
+
             # Plot training losses
             plt.figure(figsize=(12, 5))
             plt.subplot(1, 2, 1)
@@ -272,7 +285,7 @@ def train_with_estimated_dynamics():
             plt.xlabel('Iteration')
             plt.ylabel('Loss')
             plt.title('Nominal Controller Training Progress')
-            plt.ylim(0, 1000)
+            plt.ylim(0, 200)
             plt.grid(True)
             
             plt.subplot(1, 2, 2)
@@ -280,19 +293,13 @@ def train_with_estimated_dynamics():
             plt.xlabel('Iteration')
             plt.ylabel('Loss')
             plt.title('Robust Controller Training Progress')
-            plt.ylim(0, 1000)
+            plt.ylim(0, 200)
             plt.grid(True)
             
             plt.tight_layout()
             plt.savefig('training_losses_comparison.png')
             plt.close()
-            
-            # Save the controllers
-            save_path_nominal = trainer_nominal.save_controller(trained_params_nominal, suffix='nominal')
-            save_path_robust = trainer_robust.save_controller(trained_params_robust, suffix='robust')
-            print(f"\nNominal controller saved to: {save_path_nominal}")
-            print(f"Robust controller saved to: {save_path_robust}")
-
+ 
     # 3. Simulate with true parameters
     print("\nStep 3: Creating side-by-side animation of controllers...")
     # simulate_trained_controller(trainer_nominal.controller_fn, trained_params_nominal, duration=20.0, dt=0.02, save_animation=False)

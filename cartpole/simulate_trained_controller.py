@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 from matplotlib import animation
 import jax.numpy as jnp
 from cartpole_trainer import CartPoleTrainer, create_default_cost_matrices
-from noiseless_dyn import noiseless_dyn
+from noiseless_dyn_cartpole import noiseless_dyn_cartpole as noiseless_dyn
 import os
 import pickle
 from datetime import datetime

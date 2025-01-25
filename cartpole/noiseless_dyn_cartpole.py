@@ -3,23 +3,24 @@ import jax.numpy as jnp
 from jax import jit
 
 @jit
-def noiseless_dyn(in_state,u,phi):
+def noiseless_dyn_cartpole(in_state, u, phi):
     """
     Compute the continuous-time dynamics of the cart-pole system.
     Inputs:
         state (array): The state vector [x, x_dot, theta, theta_dot].
         control (array): The control vector [F], where F is the force applied to the cart.
         phi (array): The parameters of the system [mass of cart, mass of pole, length of pole, 
-            damping coefficient of cart, damping coefficient of pole, gravity constant].
+            damping coefficient of cart, damping coefficient of pole, gravity constant]
     Returns:
         array: the next state vector [x, x_dot, theta, theta_dot]
     """ 
-
     # Unpack the state vector
     x, x_dot, theta, theta_dot = in_state
     # Unpack the control vector
     F = u[0]
+    # Unpack the parameters
     m_c, m_p, l, b_x, b_theta, g = phi
+    
     # Intermediate calculations
     sin_theta = jnp.sin(theta)
     cos_theta = jnp.cos(theta)

@@ -5,11 +5,12 @@ import jax.numpy as jnp
 import jax.random as random
 from jax import jit, value_and_grad, lax
 import optax
-from noiseless_dyn import noiseless_dyn
+from noiseless_dyn_cartpole import noiseless_dyn_cartpole as noiseless_dyn
 from mlp_controller import create_example_controller
 import os
 import pickle
 from datetime import datetime
+import scipy.stats
 
 
 class CartPoleTrainer:
@@ -21,7 +22,8 @@ class CartPoleTrainer:
     """
     
     def __init__(self, 
-                 dynamics_params: jnp.ndarray,
+                 phi: jnp.ndarray,
+                 FI: jnp.ndarray = None,  # Add FI as optional parameter
                  state_dim: int = 4,
                  action_dim: int = 1,
                  hidden_layers: list = [64, 32],
@@ -31,14 +33,16 @@ class CartPoleTrainer:
         Initialize the trainer.
 
         Args:
-            dynamics_params: Physical parameters of the cart-pole system
+            phi: Physical parameters of the cart-pole system
+            FI: Fisher Information matrix (optional, needed for DR training)
             state_dim: Dimension of the state space
             action_dim: Dimension of the action space
             hidden_layers: Architecture of the MLP controller
             noise_std: Standard deviation of the process noise
             seed: Random seed for initialization
         """
-        self.dynamics_params = dynamics_params
+        self.phi = phi
+        self.FI = FI if FI is not None else jnp.eye(len(phi))
         self.noise_std = noise_std
         
         # Initialize controller
@@ -52,7 +56,7 @@ class CartPoleTrainer:
     @partial(jit, static_argnums=(0,))
     def dynamics(self, x: jnp.ndarray, u: jnp.ndarray, w: jnp.ndarray) -> jnp.ndarray:
         """Compute next state using dynamics with noise."""
-        return noiseless_dyn(x, u, self.dynamics_params) + self.noise_std * w
+        return noiseless_dyn(x, u, self.phi) + self.noise_std * w
 
     @partial(jit, static_argnums=(0,))
     def closed_loop_dynamics(self, 
@@ -138,7 +142,8 @@ class CartPoleTrainer:
         # Save configuration and parameters
         save_data = {
             'params': params,
-            'dynamics_params': self.dynamics_params,
+            'phi': self.phi,
+            'FI': self.FI,  # Save FI matrix
             'noise_std': self.noise_std,
             'architecture': self.controller.features,  # Save network architecture
         }
@@ -170,7 +175,8 @@ class CartPoleTrainer:
         
         # Create trainer with saved configuration
         trainer = cls(
-            dynamics_params=save_data['dynamics_params'],
+            phi=save_data['phi'],
+            FI=save_data.get('FI', None),  # Load FI if available
             hidden_layers=save_data['architecture'][:-1],  # Remove output layer from hidden layers
             noise_std=save_data['noise_std']
         )
@@ -266,7 +272,7 @@ class CartPoleTrainer:
         initial_state = jnp.zeros(4)
         
         # Define parameter uncertainty bounds
-        delta_phi = scale_ellipsoid * jnp.abs(self.dynamics_params)
+        delta_phi = scale_ellipsoid * jnp.abs(self.phi)
         
         # Prepare for training
         key = random.PRNGKey(seed)
@@ -278,12 +284,7 @@ class CartPoleTrainer:
             noises = random.normal(noise_key, shape=(T, 4))
             
             # Sample perturbed dynamics parameters
-            dynamics_params_sample = self.dynamics_params + random.uniform(
-                param_key,
-                shape=self.dynamics_params.shape,
-                minval=-delta_phi,
-                maxval=delta_phi
-            )
+            dynamics_params_sample = self.sample_uniform_from_ball(param_key, scale_ellipsoid)
             
             # Compute loss and gradients with sampled parameters and regularization
             loss, grads = value_and_grad(lambda p: self.loss_fn_DR(
@@ -300,6 +301,31 @@ class CartPoleTrainer:
                 print(f"DR Iteration {i+1}/{num_iterations}, Loss: {float(loss):.4f}")
 
         return self.params, jnp.array(losses)
+    
+    def sqrt_FI(self, FI):
+        """Compute square root of Fisher Information matrix."""
+        regularization = 1e-6
+        FI = FI + regularization * jnp.eye(FI.shape[0])
+        try:
+            FI_sqrt = jnp.linalg.cholesky(FI)
+        except:
+            eigvals, eigvecs = jnp.linalg.eigh(FI)
+            eigvals = jnp.maximum(eigvals, 0)
+            FI_sqrt = eigvecs @ jnp.diag(jnp.sqrt(eigvals)) @ eigvecs.T
+        return FI_sqrt
+
+    def sample_uniform_from_ball(self, param_key, scale_ellipsoid):
+        """Sample parameters uniformly from a ball around nominal parameters using FI."""
+        n = self.phi.shape[0]
+        z = random.normal(param_key, shape=(n,))
+        z = z / jnp.linalg.norm(z)
+        r = random.uniform(param_key)
+        point = r * z
+        
+        # Use FI matrix for proper scaling of the parameter space
+        FI_sqrt = self.sqrt_FI(self.FI)
+        u = scale_ellipsoid * jnp.linalg.inv(FI_sqrt) @ point
+        return self.phi + u
 
     @partial(jit, static_argnums=(0,))
     def compute_l2_regularization(self, params: Dict) -> jnp.ndarray:

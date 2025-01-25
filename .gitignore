@@ -21,6 +21,7 @@ var/
 *.egg
 *.png
 .DS_Store
+pendulum_old/
 
 # Virtual Environment
 venv/
@@ -30,6 +31,10 @@ ENV/
 saved_controllers/*.pkl
 *.mp4
 training_losses.png
+*.png
+*.pdf
+old_files/
+*.pkl
 
 # IDE specific
 .idea/
