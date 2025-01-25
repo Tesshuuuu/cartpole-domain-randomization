@@ -12,7 +12,7 @@ import matplotlib.pyplot as plt
 
 from noiseless_dyn import noiseless_dyn
 from mlp_controller import create_example_controller
-from simulate import simulate_controller
+from simulate_old import simulate_controller
 
 
 class PendulumTrainer:
@@ -60,7 +60,7 @@ class PendulumTrainer:
         """
         def step_fn(state, noise):
             next_state, action = self.closed_loop_dynamics(state, noise, self.nn_params)
-            return next_state, (state, action)
+            return next_state, (next_state, action)
 
         # Combine actions and noises into a single structure    
         _, (states_traj, actions_traj) = lax.scan(step_fn, initial_state, noises)
@@ -70,8 +70,7 @@ class PendulumTrainer:
         angle_error = jnp.mod(states_traj[:, 0] + jnp.pi, 2*jnp.pi) - jnp.pi
         velocity_error = states_traj[:, 1]
 
-        cost = Q[0,0] * angle_error**2 + Q[1,1] * velocity_error**2 
-        + jnp.einsum('ti,ij,tj->t', actions_traj, R, actions_traj)
+        cost = Q[0,0] * angle_error**2 + Q[1,1] * velocity_error**2 + jnp.einsum('ti,ij,tj->t', actions_traj, R, actions_traj)
 
         return jnp.mean(cost)
     
@@ -98,7 +97,7 @@ class PendulumTrainer:
        
             # Fix: Generate random initial state properly
             key, subkey = random.split(key)
-            initial_state = jnp.array([random.uniform(subkey, minval=-jnp.pi/2, maxval=jnp.pi/2), random.uniform(subkey, minval=-1, maxval=1)])
+            initial_state = jnp.array([random.uniform(subkey, minval=-jnp.pi, maxval=jnp.pi), random.uniform(subkey, minval=-1, maxval=1)])
 
             # calculate the regularization term
             reg_loss = self.compute_l2_regularization(self.nn_params) * reg_strength
@@ -170,32 +169,39 @@ def run_experiment(
         episode_length=200, 
         hidden_layers = [64, 32], 
         noise_std=0.01,
-        reg_strength=1e-3
+        reg_strength=1e-3, 
+        initial_learning_rate=0.01, 
+        cost_matrices=(jnp.array([[4.0, 0.0], [0.0, 0.1]]), jnp.array([[0.001]]))
     ):
     """
     Run the experiment to train the controller and simulate the pendulum system.
     """
     trainer = PendulumTrainer(phi, hidden_layers=hidden_layers, noise_std=noise_std)
 
-    # Define the cost matrices
-    Q = jnp.zeros((2, 2))
-    Q = Q.at[0, 0].set(4.0)
-    Q = Q.at[1, 1].set(0.1)
-    R = 0.001 * jnp.eye(1)
-    cost_matrices = (Q, R)
 
     print("=== Training controller ===")
     trained_params, losses = trainer.train(
         cost_matrices=cost_matrices,
         num_iterations=num_iterations,
         T=episode_length,
-        initial_learning_rate=0.01, 
+        initial_learning_rate=initial_learning_rate, 
         reg_strength=reg_strength
     )
 
     # Plot the loss
     plt.figure(figsize=(10, 5))
     plt.plot(losses)
+    # plot the mean average loss
+    window_size = 10
+    mean_losses = jnp.convolve(losses, jnp.ones(window_size)/window_size, mode='valid')
+    plt.plot(mean_losses, 'r--', alpha=0.8, label='Short moving average')
+    window_size = 100
+    mean_losses = jnp.convolve(losses, jnp.ones(window_size)/window_size, mode='valid')
+    plt.plot(mean_losses, 'g--', alpha=0.8, label='Medium moving average')
+    window_size = 1000
+    mean_losses = jnp.convolve(losses, jnp.ones(window_size)/window_size, mode='valid')
+    plt.plot(mean_losses, 'b--', alpha=0.8, label='Long moving average')
+    plt.legend()
     plt.xlabel('Iteration')
     plt.ylabel('Loss')
     plt.title('Training Progress')
@@ -205,16 +211,17 @@ def run_experiment(
 
     # Simulate the controller
     print("=== Simulating controller ===")
-    simulate_controller(lambda params, obs: trainer.controller.apply({'params': params}, obs), trained_params)
-
+    simulate_controller(lambda params, obs: trainer.controller.apply({'params': params}, obs), trained_params, duration=60, dt=0.05)
     pass
 
 if __name__ == "__main__":
     run_experiment(
         jnp.array([1.0, 1.0, 9.81]), 
-        num_iterations=20000, 
-        episode_length=200, 
+        num_iterations=10000, 
+        episode_length=400, 
         hidden_layers = [64, 64, 32], 
         noise_std=0.0, 
-        reg_strength=1e-5
+        reg_strength=1e-5, 
+        initial_learning_rate=0.01, 
+        cost_matrices=(jnp.array([[1.0, 0.0], [0.0, 0.1]]), jnp.array([[0.001]]))
     )

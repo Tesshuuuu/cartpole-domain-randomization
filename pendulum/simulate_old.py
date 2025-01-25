@@ -5,7 +5,13 @@ import jax.numpy as jnp
 import jax
 
 from noiseless_dyn import noiseless_dyn
-def simulate_controller(all_states, all_actions, initial_conditions, dt=0.05, save_animation=False):
+def simulate_controller(
+    controller_fn, 
+    params, 
+    duration, 
+    dt, 
+    save_animation=False):
+
     """
     Simulate the pendulum system with the trained controller.
     
@@ -16,50 +22,51 @@ def simulate_controller(all_states, all_actions, initial_conditions, dt=0.05, sa
         dt: Time step in seconds
         save_animation: Whether to save the animation as MP4
     """
-    # # System parameters [m, l, g]
-    # dynamics_params = jnp.array([1.0, 1.0, 9.81])
+    # System parameters [m, l, g]
+    dynamics_params = jnp.array([1.0, 1.0, 9.81])
     
-    # # Simulation settings
-    # n_steps = int(duration/dt)
+    # Simulation settings
+    n_steps = int(duration/dt)
     
-    # # Initialize state arrays for different initial conditions
-    # initial_conditions = [
-    #     jnp.array([jnp.pi, 0.0]),     # Bottom position
-    #     jnp.array([0.0, 0.0]),        # Top position
-    #     jnp.array([jnp.pi/2, 0.0]),   # Horizontal position
-    # ]
+    # Initialize state arrays for different initial conditions
+    initial_conditions = [
+        jnp.array([jnp.pi, 0.0]),     # Bottom position
+        jnp.array([0.0, 0.0]),        # Top position
+        jnp.array([jnp.pi/2, 0.0]),   # Horizontal position
+    ]
     
-    # all_states = []
-    # all_actions = []
+    all_states = []
+    all_actions = []
     
-    # # Simulate for each initial condition
-    # for initial_state in initial_conditions:
-    #     states = np.zeros((n_steps, 2))
-    #     actions = np.zeros((n_steps, 1))
+    # Simulate for each initial condition
+    for initial_state in initial_conditions:
+        states = np.zeros((n_steps, 2))
+        actions = np.zeros((n_steps, 1))
         
-    #     state = initial_state
-    #     states[0] = state
+        state = initial_state
+        states[0] = state
         
-    #     # Simulation loop
-    #     def simulate_step(state, action):
-    #         obs = jnp.array([jnp.cos(state[0]), jnp.sin(state[0]), state[1]])
-    #         action = controller_fn(params, obs)
-    #         next_state = noiseless_dyn(state, action, dynamics_params)
-    #         return next_state, (next_state, action)
+        # Simulation loop
+        def simulate_step(state, action):
+            obs = jnp.array([jnp.cos(state[0]), jnp.sin(state[0]), state[1]])
+            action = controller_fn(params, obs)
+            next_state = noiseless_dyn(state, action, dynamics_params)
+            return next_state, (next_state, action)
 
-    #     _, (simulated_states, simulated_actions) = jax.lax.scan(simulate_step, initial_state, jnp.zeros(n_steps))
-    #     states = np.array(simulated_states)
-    #     actions = np.array(simulated_actions)
+        _, (simulated_states, simulated_actions) = jax.lax.scan(simulate_step, initial_state, jnp.zeros(n_steps))
+        states = np.array(simulated_states)
+        actions = np.array(simulated_actions)
 
-    #     # for i in range(1, n_steps):
-    #     #     obs = jnp.array([jnp.cos(state[0]), jnp.sin(state[0]), state[1]])
-    #     #     action = controller_fn(params, obs)
-    #     #     actions[i-1] = action
-    #     #     state = noiseless_dyn(state, action, dynamics_params)
-    #     #     states[i] = state
+        # for i in range(1, n_steps):
+        #     obs = jnp.array([jnp.cos(state[0]), jnp.sin(state[0]), state[1]])
+        #     action = controller_fn(params, obs)
+        #     actions[i-1] = action
+        #     state = noiseless_dyn(state, action, dynamics_params)
+        #     states[i] = state
             
-    #     all_states.append(states)
-    #     all_actions.append(actions)
+        all_states.append(states)
+        all_actions.append(actions)
+
 
     # Create visualization
     fig = plt.figure(figsize=(15, 10))
